@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -13,8 +14,8 @@
     --panel: #1c281d;
     --text: #e8eee7;
     --green: #8df08d;
-    --red: #ff8b8b;
-    --orange: #ffd28a;
+    --red: #ff7777;
+    --orange: #ffc66d;
     --border: #526451;
 }
 
@@ -88,7 +89,7 @@ button.secondary {
     border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 18px;
-    line-height: 1.8;
+    line-height: 2;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     outline: none;
@@ -104,62 +105,55 @@ button.secondary {
     pointer-events: none;
 }
 
+.word {
+    border-radius: 4px;
+    padding: 2px 1px;
+}
+
 .correct {
     color: var(--green);
     background: #244b2c;
-    border-radius: 3px;
 }
 
 .wrong {
     color: var(--red);
     background: #592727;
-    border-radius: 3px;
+}
+
+.warning {
+    color: var(--orange);
+    background: #60451f;
 }
 
 .pending {
     color: var(--text);
 }
 
-.missing-panel {
-    margin-top: 15px;
-    padding: 12px;
-    border-radius: 8px;
-    background: #3b301b;
-    color: var(--orange);
-    line-height: 1.8;
-}
-
-.missing-word {
-    display: inline-block;
-    margin: 3px;
-    padding: 3px 7px;
-    background: #60451f;
-    color: var(--orange);
-    border-radius: 4px;
-}
-
-.missing-position {
-    color: #c5d0c2;
-    font-size: 13px;
-}
-
 #score {
-    font-size: 28px;
+    font-size: 27px;
     font-weight: bold;
     color: #8dbb70;
     text-align: center;
-    margin-bottom: 15px;
 }
 
-#stats {
+#status {
     text-align: center;
     color: #c5d0c2;
-    line-height: 1.7;
+    margin-top: 10px;
 }
 
 .legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
     font-size: 14px;
-    line-height: 2;
+    margin-top: 20px;
+}
+
+.legend span {
+    padding: 5px 8px;
+    border-radius: 5px;
 }
 
 .small {
@@ -196,7 +190,11 @@ summary {
     }
 
     h1 {
-        font-size: 24px;
+        font-size: 23px;
+    }
+
+    #answer {
+        font-size: 17px;
     }
 }
 </style>
@@ -228,7 +226,6 @@ summary {
 
     <details>
         <summary>Odsłoń tekst wzorcowy</summary>
-
         <pre id="referenceDisplay"></pre>
     </details>
 
@@ -251,13 +248,9 @@ summary {
     ></div>
 
     <p class="small">
-        Kolory pojawiają się automatycznie po zakończeniu słowa.
+        Sprawdzanie odbywa się automatycznie podczas pisania.
+        Nie musisz naciskać żadnego przycisku.
     </p>
-
-    <div class="missing-panel">
-        <strong>Pominięte słowa:</strong>
-        <div id="missingWords">Brak</div>
-    </div>
 
     <button id="clearButton" class="secondary">
         Wyczyść odpowiedź
@@ -267,21 +260,20 @@ summary {
 
 <div class="panel">
 
-    <div id="score">Zgodność: —</div>
+    <div id="score">
+        Zgodność: —
+    </div>
 
-    <div id="stats"></div>
+    <div id="status">
+        Oczekiwanie na wpisanie tekstu.
+    </div>
 
-    <p class="legend">
-        <span class="correct">Zielony</span> – poprawne słowo
-
-        <span class="wrong">Czerwony</span> – błędne słowo
-
-        <span style="color:#ffd28a">Pomarańczowy</span>
-        – pominięte słowo
-
-        <span class="pending">Biały</span>
-        – aktualnie wpisywane
-    </p>
+    <div class="legend">
+        <span class="correct">Zielony – poprawnie</span>
+        <span class="wrong">Czerwony – błędnie</span>
+        <span class="warning">Pomarańczowy – sąsiedztwo błędu</span>
+        <span class="pending">Biały – aktualne słowo</span>
+    </div>
 
 </div>
 
@@ -302,10 +294,7 @@ const referenceDisplay =
 
 const loading = document.getElementById("loading");
 const score = document.getElementById("score");
-const stats = document.getElementById("stats");
-
-const missingWords =
-    document.getElementById("missingWords");
+const status = document.getElementById("status");
 
 const clearButton =
     document.getElementById("clearButton");
@@ -315,66 +304,94 @@ let referenceWords = [];
 let isComposing = false;
 let loadVersion = 0;
 
+
 // =====================================================
-// NORMALIZACJA SŁÓW
-// Ignorujemy wielkość liter i interpunkcję.
+// NORMALIZACJA
 // =====================================================
 
 function normalize(word) {
+
     return word
+        .normalize("NFC")
         .toLocaleLowerCase("pl")
         .replace(/[.,;:!?„”"'()«»—–-]/g, "")
         .trim();
+
 }
 
+
 // =====================================================
-// PODZIAŁ TEKSTU NA SŁOWA
+// PODZIAŁ NA SŁOWA
 // =====================================================
 
 function tokenize(text) {
-    return text.trim().split(/\s+/).filter(Boolean);
+
+    return text
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
 }
 
+
 // =====================================================
-// POBIERANIE TEKSTU Z POLA
+// POBIERANIE TEKSTU
 // =====================================================
 
 function getPlainText() {
+
     return answer.innerText
         .replace(/\u00A0/g, " ")
         .replace(/\r/g, "");
+
 }
 
+
 // =====================================================
-// ZAPIS ODPOWIEDZI
+// ZAPIS I ODCZYT ODPOWIEDZI
 // =====================================================
 
 function saveAnswer() {
+
     try {
+
         localStorage.setItem(
             "military_answer_" + lesson.value,
             getPlainText()
         );
+
     } catch (error) {
-        console.error("Nie udało się zapisać odpowiedzi.", error);
+
+        console.error("Błąd zapisu:", error);
+
     }
+
 }
 
+
 function loadAnswer() {
+
     try {
+
         answer.textContent = localStorage.getItem(
             "military_answer_" + lesson.value
         ) || "";
+
     } catch (error) {
+
         answer.textContent = "";
+
     }
+
 }
+
 
 // =====================================================
 // POZYCJA KURSORA
 // =====================================================
 
 function getCaretOffset(element) {
+
     const selection = window.getSelection();
 
     if (!selection.rangeCount) {
@@ -397,10 +414,14 @@ function getCaretOffset(element) {
     );
 
     return beforeCaret.toString().length;
+
 }
 
+
 function setCaretOffset(element, offset) {
+
     const selection = window.getSelection();
+
     const range = document.createRange();
 
     const walker = document.createTreeWalker(
@@ -411,6 +432,7 @@ function setCaretOffset(element, offset) {
     let currentOffset = 0;
     let targetNode = null;
     let targetOffset = 0;
+
     let node;
 
     while ((node = walker.nextNode())) {
@@ -420,37 +442,44 @@ function setCaretOffset(element, offset) {
         if (currentOffset + length >= offset) {
 
             targetNode = node;
+
             targetOffset = offset - currentOffset;
 
             break;
+
         }
 
         currentOffset += length;
+
     }
 
     if (!targetNode) {
 
         range.selectNodeContents(element);
+
         range.collapse(false);
 
     } else {
 
         range.setStart(targetNode, targetOffset);
+
         range.collapse(true);
 
     }
 
     selection.removeAllRanges();
+
     selection.addRange(range);
+
 }
 
+
 // =====================================================
-// ALGORYTM DOPASOWANIA SŁÓW
-// Wykrywa:
- // - poprawne słowa
- // - błędne słowa
- // - pominięte słowa
- // - dodatkowe słowa
+// ALGORYTM PORÓWNYWANIA TEKSTU
+//
+// Dopasowuje słowa do tekstu wzorcowego.
+// Wykrywa pominięcia, błędną kolejność,
+// błędne słowa i dodatkowe słowa.
 // =====================================================
 
 function alignWords(reference, user) {
@@ -463,6 +492,8 @@ function alignWords(reference, user) {
         () => Array(m + 1).fill(0)
     );
 
+    // Inicjalizacja macierzy
+
     for (let i = 0; i <= n; i++) {
         dp[i][0] = i;
     }
@@ -470,6 +501,8 @@ function alignWords(reference, user) {
     for (let j = 0; j <= m; j++) {
         dp[0][j] = j;
     }
+
+    // Obliczanie odległości edycyjnej
 
     for (let i = 1; i <= n; i++) {
 
@@ -488,18 +521,27 @@ function alignWords(reference, user) {
                 dp[i][j - 1] + 1
 
             );
+
         }
+
     }
 
+    // Statusy słów użytkownika
+
     const userStatus = Array(m).fill("wrong");
+
+    // Zapamiętujemy miejsca pominięć
     const missing = [];
 
     let i = n;
     let j = m;
 
+    // Odtwarzanie najlepszego dopasowania
+
     while (i > 0 || j > 0) {
 
-        // Poprawne dopasowanie
+        // 1. Dokładne dopasowanie
+
         if (
             i > 0 &&
             j > 0 &&
@@ -513,10 +555,14 @@ function alignWords(reference, user) {
             i--;
             j--;
 
+            continue;
+
         }
 
-        // Zamiana słowa na inne
-        else if (
+        // 2. Zamiana słowa na inne
+        // Oba słowa zostaną potraktowane jako błędne.
+
+        if (
             i > 0 &&
             j > 0 &&
             dp[i][j] === dp[i - 1][j - 1] + 1
@@ -527,40 +573,81 @@ function alignWords(reference, user) {
             i--;
             j--;
 
+            continue;
+
         }
 
-        // Pominięte słowo
-        else if (
+        // 3. Pominięcie słowa wzorcowego
+
+        if (
             i > 0 &&
             dp[i][j] === dp[i - 1][j] + 1
         ) {
 
             missing.push({
-                word: reference[i - 1],
                 position: j
             });
 
             i--;
 
+            continue;
+
         }
 
-        // Dodatkowe słowo
-        else if (j > 0) {
+        // 4. Dodatkowe słowo użytkownika
+
+        if (j > 0) {
 
             userStatus[j - 1] = "wrong";
 
             j--;
 
         }
+
     }
 
     missing.reverse();
+
+    // =================================================
+    // OZNACZANIE SĄSIEDNICH SŁÓW NA POMARAŃCZOWO
+    // =================================================
+
+    missing.forEach(item => {
+
+        const left = item.position - 1;
+        const right = item.position;
+
+        // Słowo przed pominięciem
+
+        if (
+            left >= 0 &&
+            userStatus[left] === "correct"
+        ) {
+
+            userStatus[left] = "warning";
+
+        }
+
+        // Słowo po pominięciu
+
+        if (
+            right < m &&
+            userStatus[right] === "correct"
+        ) {
+
+            userStatus[right] = "warning";
+
+        }
+
+    });
 
     return {
         userStatus,
         missing
     };
+
 }
+
 
 // =====================================================
 // SPRAWDZANIE NA ŻYWO
@@ -578,8 +665,7 @@ function checkLive() {
         part => !/^\s+$/.test(part)
     );
 
-    // Nie sprawdzamy ostatniego słowa,
-    // dopóki użytkownik go nie zakończy.
+    // Ostatnie słowo sprawdzamy dopiero po zakończeniu.
 
     const endsWithSpace = /\s$/.test(text);
 
@@ -600,26 +686,31 @@ function checkLive() {
         completedWords
     );
 
+    // Porównanie z wzorcem
+
     const alignment = alignWords(
         referenceWords,
         userWords
     );
 
     const userStatus = alignment.userStatus;
-    const missing = alignment.missing;
 
-    // Czyścimy pole przed ponownym kolorowaniem
     answer.innerHTML = "";
 
     let wordIndex = 0;
 
     let correctCount = 0;
+    let warningCount = 0;
     let wrongCount = 0;
 
-    // Kolorowanie wpisanych słów
+    // =================================================
+    // KOLOROWANIE BEZPOŚREDNIO W POLU WPISYWANIA
+    // =================================================
+
     parts.forEach(part => {
 
-        // Zachowujemy spacje i nowe linie
+        // Zachowanie spacji i nowych linii
+
         if (/^\s+$/.test(part)) {
 
             answer.appendChild(
@@ -627,30 +718,37 @@ function checkLive() {
             );
 
             return;
+
         }
 
         const span = document.createElement("span");
 
         span.textContent = part;
 
-        const isPending =
-            wordIndex >= completedWords;
+        // Aktualnie wpisywane słowo
 
-        if (isPending) {
+        if (wordIndex >= completedWords) {
 
-            span.className = "pending";
+            span.className = "word pending";
 
         } else {
 
-            const status = userStatus[wordIndex];
+            const wordClass = userStatus[wordIndex];
 
-            span.className = status;
+            span.className = "word " + wordClass;
 
-            if (status === "correct") {
+            if (wordClass === "correct") {
                 correctCount++;
-            } else {
+            }
+
+            else if (wordClass === "warning") {
+                warningCount++;
+            }
+
+            else {
                 wrongCount++;
             }
+
         }
 
         answer.appendChild(span);
@@ -659,54 +757,9 @@ function checkLive() {
 
     });
 
-    // Przywracamy kursor w poprzednim miejscu
+    // Przywracamy kursor w miejscu pisania
+
     setCaretOffset(answer, caretOffset);
-
-    // =================================================
-    // LISTA POMINIĘTYCH SŁÓW
-    // =================================================
-
-    missingWords.innerHTML = "";
-
-    if (missing.length === 0) {
-
-        missingWords.textContent = "Brak";
-
-    } else {
-
-        missing.forEach(item => {
-
-            const wrapper = document.createElement("div");
-
-            const word = document.createElement("span");
-
-            word.className = "missing-word";
-            word.textContent = item.word;
-
-            const position = document.createElement("span");
-
-            position.className = "missing-position";
-
-            if (item.position === 0) {
-
-                position.textContent =
-                    " – na początku tekstu";
-
-            } else {
-
-                position.textContent =
-                    " – po słowie: " +
-                    userWords[item.position - 1];
-
-            }
-
-            wrapper.appendChild(word);
-            wrapper.appendChild(position);
-
-            missingWords.appendChild(wrapper);
-
-        });
-    }
 
     // =================================================
     // WYNIK PROCENTOWY
@@ -715,23 +768,35 @@ function checkLive() {
     const total = referenceWords.length;
 
     const percentage = total
-        ? Math.round(correctCount / total * 100)
+        ? Math.round(
+            (correctCount + warningCount) / total * 100
+        )
         : 0;
 
     score.textContent =
         "Zgodność: " + percentage + "%";
 
-    stats.textContent =
-        "Poprawne: " + correctCount +
-        " | Błędne: " + wrongCount +
-        " | Pominięte: " + missing.length +
-        " | Słów wzorcowych: " + total;
+    if (!text.trim()) {
+
+        status.textContent =
+            "Zacznij wpisywać tekst.";
+
+    } else {
+
+        status.textContent =
+            "Poprawne: " + correctCount +
+            " | Sąsiedztwo błędu: " + warningCount +
+            " | Błędne: " + wrongCount;
+
+    }
 
     saveAnswer();
+
 }
 
+
 // =====================================================
-// WCZYTYWANIE PLIKÓW TXT
+// WCZYTYWANIE PLIKU TXT
 // =====================================================
 
 async function loadReference() {
@@ -744,26 +809,27 @@ async function loadReference() {
     referenceWords = [];
 
     referenceDisplay.textContent = "";
+
     answer.textContent = "";
 
     score.textContent = "Zgodność: —";
-    stats.textContent = "";
-    missingWords.textContent = "Brak";
+
+    status.textContent = "Oczekiwanie na tekst.";
 
     try {
 
         const response = await fetch(lesson.value);
 
         if (!response.ok) {
+
             throw new Error(
-                "Nie udało się wczytać pliku: " + lesson.value
+                "Nie udało się wczytać pliku."
             );
+
         }
 
         const loadedText = (await response.text()).trim();
 
-        // Ignorujemy wynik poprzedniego ładowania,
-        // jeśli użytkownik zmienił materiał.
         if (currentVersion !== loadVersion) {
             return;
         }
@@ -773,7 +839,9 @@ async function loadReference() {
         referenceWords = tokenize(referenceText);
 
         if (!referenceWords.length) {
+
             throw new Error("Plik jest pusty.");
+
         }
 
         referenceDisplay.textContent = referenceText;
@@ -791,16 +859,22 @@ async function loadReference() {
         }
 
         loading.textContent =
-            "Błąd wczytywania tekstu wzorcowego.";
+            "Nie udało się wczytać materiału.";
 
         score.textContent = "Błąd wczytywania";
 
+        status.textContent =
+            "Sprawdź obecność pliku TXT w repozytorium.";
+
         console.error(error);
+
     }
+
 }
 
+
 // =====================================================
-// WPISYWANIE
+// OBSŁUGA WPISYWANIA
 // =====================================================
 
 answer.addEventListener("input", () => {
@@ -811,22 +885,36 @@ answer.addEventListener("input", () => {
 
 });
 
-// Obsługa polskich znaków i klawiatur mobilnych
 answer.addEventListener("compositionstart", () => {
+
     isComposing = true;
+
 });
 
 answer.addEventListener("compositionend", () => {
+
     isComposing = false;
+
     checkLive();
+
 });
 
-// Zmiana materiału
+
+// =====================================================
+// ZMIANA MATERIAŁU
+// =====================================================
+
 lesson.addEventListener("change", () => {
+
     loadReference();
+
 });
 
-// Czyszczenie odpowiedzi
+
+// =====================================================
+// CZYSZCZENIE
+// =====================================================
+
 clearButton.addEventListener("click", () => {
 
     answer.textContent = "";
@@ -841,8 +929,9 @@ clearButton.addEventListener("click", () => {
 
 });
 
+
 // =====================================================
-// URUCHOMIENIE STRONY
+// START
 // =====================================================
 
 loadReference();
@@ -851,6 +940,7 @@ loadReference();
 
 </body>
 </html>
+
 
 
 
