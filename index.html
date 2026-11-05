@@ -1,5 +1,4 @@
 
-
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -13,8 +12,9 @@
     --bg: #101810;
     --panel: #1c281d;
     --text: #e8eee7;
-    --green: #8dbb70;
-    --red: #ff7777;
+    --green: #8df08d;
+    --red: #ff8b8b;
+    --orange: #ffd28a;
     --border: #526451;
 }
 
@@ -36,7 +36,7 @@ body {
 }
 
 h1 {
-    color: var(--green);
+    color: #8dbb70;
     text-align: center;
 }
 
@@ -53,8 +53,7 @@ label {
     font-weight: bold;
 }
 
-select,
-button {
+select, button {
     width: 100%;
     padding: 12px;
     margin-bottom: 15px;
@@ -76,6 +75,10 @@ button:hover {
     background: #6a9651;
 }
 
+button.secondary {
+    background: #394839;
+}
+
 #answer {
     width: 100%;
     min-height: 280px;
@@ -92,7 +95,7 @@ button:hover {
 }
 
 #answer:focus {
-    border-color: var(--green);
+    border-color: #8dbb70;
 }
 
 #answer:empty::before {
@@ -102,25 +105,48 @@ button:hover {
 }
 
 .correct {
-    color: #8df08d;
+    color: var(--green);
     background: #244b2c;
     border-radius: 3px;
 }
 
 .wrong {
-    color: #ff8b8b;
+    color: var(--red);
     background: #592727;
     border-radius: 3px;
 }
 
 .pending {
-    color: #e8eee7;
+    color: var(--text);
+}
+
+.missing-panel {
+    margin-top: 15px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #3b301b;
+    color: var(--orange);
+    line-height: 1.8;
+}
+
+.missing-word {
+    display: inline-block;
+    margin: 3px;
+    padding: 3px 7px;
+    background: #60451f;
+    color: var(--orange);
+    border-radius: 4px;
+}
+
+.missing-position {
+    color: #c5d0c2;
+    font-size: 13px;
 }
 
 #score {
     font-size: 28px;
     font-weight: bold;
-    color: var(--green);
+    color: #8dbb70;
     text-align: center;
     margin-bottom: 15px;
 }
@@ -147,7 +173,7 @@ details {
 
 summary {
     cursor: pointer;
-    color: var(--green);
+    color: #8dbb70;
     font-weight: bold;
 }
 
@@ -210,7 +236,7 @@ summary {
 
 <div class="panel">
 
-    <label>
+    <label for="answer">
         Wpisz tekst z pamięci:
     </label>
 
@@ -226,10 +252,14 @@ summary {
 
     <p class="small">
         Kolory pojawiają się automatycznie po zakończeniu słowa.
-        Możesz pisać, poprawiać i usuwać tekst.
     </p>
 
-    <button id="clearButton">
+    <div class="missing-panel">
+        <strong>Pominięte słowa:</strong>
+        <div id="missingWords">Brak</div>
+    </div>
+
+    <button id="clearButton" class="secondary">
         Wyczyść odpowiedź
     </button>
 
@@ -243,8 +273,14 @@ summary {
 
     <p class="legend">
         <span class="correct">Zielony</span> – poprawne słowo
+
         <span class="wrong">Czerwony</span> – błędne słowo
-        <span class="pending">Biały</span> – aktualnie wpisywane
+
+        <span style="color:#ffd28a">Pomarańczowy</span>
+        – pominięte słowo
+
+        <span class="pending">Biały</span>
+        – aktualnie wpisywane
     </p>
 
 </div>
@@ -254,20 +290,34 @@ summary {
 <script>
 "use strict";
 
+// =====================================================
+// ELEMENTY STRONY
+// =====================================================
+
 const lesson = document.getElementById("lesson");
 const answer = document.getElementById("answer");
-const referenceDisplay = document.getElementById("referenceDisplay");
+
+const referenceDisplay =
+    document.getElementById("referenceDisplay");
+
 const loading = document.getElementById("loading");
 const score = document.getElementById("score");
 const stats = document.getElementById("stats");
-const clearButton = document.getElementById("clearButton");
+
+const missingWords =
+    document.getElementById("missingWords");
+
+const clearButton =
+    document.getElementById("clearButton");
 
 let referenceText = "";
 let referenceWords = [];
 let isComposing = false;
+let loadVersion = 0;
 
 // =====================================================
 // NORMALIZACJA SŁÓW
+// Ignorujemy wielkość liter i interpunkcję.
 // =====================================================
 
 function normalize(word) {
@@ -278,7 +328,7 @@ function normalize(word) {
 }
 
 // =====================================================
-// PODZIAŁ NA SŁOWA
+// PODZIAŁ TEKSTU NA SŁOWA
 // =====================================================
 
 function tokenize(text) {
@@ -300,29 +350,35 @@ function getPlainText() {
 // =====================================================
 
 function saveAnswer() {
-    localStorage.setItem(
-        "military_answer_" + lesson.value,
-        getPlainText()
-    );
+    try {
+        localStorage.setItem(
+            "military_answer_" + lesson.value,
+            getPlainText()
+        );
+    } catch (error) {
+        console.error("Nie udało się zapisać odpowiedzi.", error);
+    }
 }
 
 function loadAnswer() {
-    const saved = localStorage.getItem(
-        "military_answer_" + lesson.value
-    ) || "";
-
-    answer.textContent = saved;
+    try {
+        answer.textContent = localStorage.getItem(
+            "military_answer_" + lesson.value
+        ) || "";
+    } catch (error) {
+        answer.textContent = "";
+    }
 }
 
 // =====================================================
-// ZAPAMIĘTANIE POZYCJI KURSORA
+// POZYCJA KURSORA
 // =====================================================
 
 function getCaretOffset(element) {
     const selection = window.getSelection();
 
     if (!selection.rangeCount) {
-        return 0;
+        return getPlainText().length;
     }
 
     const range = selection.getRangeAt(0);
@@ -334,6 +390,7 @@ function getCaretOffset(element) {
     const beforeCaret = range.cloneRange();
 
     beforeCaret.selectNodeContents(element);
+
     beforeCaret.setEnd(
         range.startContainer,
         range.startOffset
@@ -346,15 +403,14 @@ function setCaretOffset(element, offset) {
     const selection = window.getSelection();
     const range = document.createRange();
 
-    let currentOffset = 0;
-    let targetNode = null;
-    let targetOffset = 0;
-
     const walker = document.createTreeWalker(
         element,
         NodeFilter.SHOW_TEXT
     );
 
+    let currentOffset = 0;
+    let targetNode = null;
+    let targetOffset = 0;
     let node;
 
     while ((node = walker.nextNode())) {
@@ -389,7 +445,125 @@ function setCaretOffset(element, offset) {
 }
 
 // =====================================================
-// SPRAWDZANIE I KOLOROWANIE NA ŻYWO
+// ALGORYTM DOPASOWANIA SŁÓW
+// Wykrywa:
+ // - poprawne słowa
+ // - błędne słowa
+ // - pominięte słowa
+ // - dodatkowe słowa
+// =====================================================
+
+function alignWords(reference, user) {
+
+    const n = reference.length;
+    const m = user.length;
+
+    const dp = Array.from(
+        { length: n + 1 },
+        () => Array(m + 1).fill(0)
+    );
+
+    for (let i = 0; i <= n; i++) {
+        dp[i][0] = i;
+    }
+
+    for (let j = 0; j <= m; j++) {
+        dp[0][j] = j;
+    }
+
+    for (let i = 1; i <= n; i++) {
+
+        for (let j = 1; j <= m; j++) {
+
+            const cost =
+                normalize(reference[i - 1]) ===
+                normalize(user[j - 1]) ? 0 : 1;
+
+            dp[i][j] = Math.min(
+
+                dp[i - 1][j - 1] + cost,
+
+                dp[i - 1][j] + 1,
+
+                dp[i][j - 1] + 1
+
+            );
+        }
+    }
+
+    const userStatus = Array(m).fill("wrong");
+    const missing = [];
+
+    let i = n;
+    let j = m;
+
+    while (i > 0 || j > 0) {
+
+        // Poprawne dopasowanie
+        if (
+            i > 0 &&
+            j > 0 &&
+            normalize(reference[i - 1]) ===
+            normalize(user[j - 1]) &&
+            dp[i][j] === dp[i - 1][j - 1]
+        ) {
+
+            userStatus[j - 1] = "correct";
+
+            i--;
+            j--;
+
+        }
+
+        // Zamiana słowa na inne
+        else if (
+            i > 0 &&
+            j > 0 &&
+            dp[i][j] === dp[i - 1][j - 1] + 1
+        ) {
+
+            userStatus[j - 1] = "wrong";
+
+            i--;
+            j--;
+
+        }
+
+        // Pominięte słowo
+        else if (
+            i > 0 &&
+            dp[i][j] === dp[i - 1][j] + 1
+        ) {
+
+            missing.push({
+                word: reference[i - 1],
+                position: j
+            });
+
+            i--;
+
+        }
+
+        // Dodatkowe słowo
+        else if (j > 0) {
+
+            userStatus[j - 1] = "wrong";
+
+            j--;
+
+        }
+    }
+
+    missing.reverse();
+
+    return {
+        userStatus,
+        missing
+    };
+}
+
+// =====================================================
+// SPRAWDZANIE NA ŻYWO
 // =====================================================
 
 function checkLive() {
@@ -400,24 +574,57 @@ function checkLive() {
 
     const parts = text.match(/\S+|\s+/g) || [];
 
+    const allUserWords = parts.filter(
+        part => !/^\s+$/.test(part)
+    );
+
+    // Nie sprawdzamy ostatniego słowa,
+    // dopóki użytkownik go nie zakończy.
+
+    const endsWithSpace = /\s$/.test(text);
+
+    const lastWord =
+        allUserWords[allUserWords.length - 1] || "";
+
+    const lastWordFinished =
+        endsWithSpace ||
+        /[.,;:!?)]$/.test(lastWord);
+
+    const completedWords =
+        allUserWords.length > 0 && !lastWordFinished
+            ? allUserWords.length - 1
+            : allUserWords.length;
+
+    const userWords = allUserWords.slice(
+        0,
+        completedWords
+    );
+
+    const alignment = alignWords(
+        referenceWords,
+        userWords
+    );
+
+    const userStatus = alignment.userStatus;
+    const missing = alignment.missing;
+
+    // Czyścimy pole przed ponownym kolorowaniem
     answer.innerHTML = "";
 
     let wordIndex = 0;
-    let charOffset = 0;
 
     let correctCount = 0;
     let wrongCount = 0;
 
+    // Kolorowanie wpisanych słów
     parts.forEach(part => {
 
-        // Białe znaki zostają zachowane
+        // Zachowujemy spacje i nowe linie
         if (/^\s+$/.test(part)) {
 
             answer.appendChild(
                 document.createTextNode(part)
             );
-
-            charOffset += part.length;
 
             return;
         }
@@ -426,51 +633,84 @@ function checkLive() {
 
         span.textContent = part;
 
-        const isLastWord =
-            charOffset + part.length === text.length;
+        const isPending =
+            wordIndex >= completedWords;
 
-        // Ostatnie słowo pozostaje neutralne,
-        // dopóki użytkownik go nie zakończy.
-        const isFinished =
-            !isLastWord ||
-            /[.,;:!?)]$/.test(part);
-
-        if (!isFinished) {
+        if (isPending) {
 
             span.className = "pending";
 
         } else {
 
-            const expected =
-                referenceWords[wordIndex];
+            const status = userStatus[wordIndex];
 
-            if (
-                expected !== undefined &&
-                normalize(part) === normalize(expected)
-            ) {
+            span.className = status;
 
-                span.className = "correct";
+            if (status === "correct") {
                 correctCount++;
-
             } else {
-
-                span.className = "wrong";
                 wrongCount++;
-
             }
-
         }
 
         answer.appendChild(span);
 
         wordIndex++;
 
-        charOffset += part.length;
-
     });
 
-    // Przywrócenie pozycji kursora
+    // Przywracamy kursor w poprzednim miejscu
     setCaretOffset(answer, caretOffset);
+
+    // =================================================
+    // LISTA POMINIĘTYCH SŁÓW
+    // =================================================
+
+    missingWords.innerHTML = "";
+
+    if (missing.length === 0) {
+
+        missingWords.textContent = "Brak";
+
+    } else {
+
+        missing.forEach(item => {
+
+            const wrapper = document.createElement("div");
+
+            const word = document.createElement("span");
+
+            word.className = "missing-word";
+            word.textContent = item.word;
+
+            const position = document.createElement("span");
+
+            position.className = "missing-position";
+
+            if (item.position === 0) {
+
+                position.textContent =
+                    " – na początku tekstu";
+
+            } else {
+
+                position.textContent =
+                    " – po słowie: " +
+                    userWords[item.position - 1];
+
+            }
+
+            wrapper.appendChild(word);
+            wrapper.appendChild(position);
+
+            missingWords.appendChild(wrapper);
+
+        });
+    }
+
+    // =================================================
+    // WYNIK PROCENTOWY
+    // =================================================
 
     const total = referenceWords.length;
 
@@ -484,16 +724,19 @@ function checkLive() {
     stats.textContent =
         "Poprawne: " + correctCount +
         " | Błędne: " + wrongCount +
+        " | Pominięte: " + missing.length +
         " | Słów wzorcowych: " + total;
 
     saveAnswer();
 }
 
 // =====================================================
-// WCZYTYWANIE PLIKU TXT
+// WCZYTYWANIE PLIKÓW TXT
 // =====================================================
 
 async function loadReference() {
+
+    const currentVersion = ++loadVersion;
 
     loading.textContent = "Wczytywanie materiału...";
 
@@ -505,18 +748,27 @@ async function loadReference() {
 
     score.textContent = "Zgodność: —";
     stats.textContent = "";
+    missingWords.textContent = "Brak";
 
     try {
 
         const response = await fetch(lesson.value);
 
         if (!response.ok) {
-            throw new Error("Nie udało się wczytać pliku.");
+            throw new Error(
+                "Nie udało się wczytać pliku: " + lesson.value
+            );
         }
 
-        referenceText = await response.text();
+        const loadedText = (await response.text()).trim();
 
-        referenceText = referenceText.trim();
+        // Ignorujemy wynik poprzedniego ładowania,
+        // jeśli użytkownik zmienił materiał.
+        if (currentVersion !== loadVersion) {
+            return;
+        }
+
+        referenceText = loadedText;
 
         referenceWords = tokenize(referenceText);
 
@@ -534,17 +786,21 @@ async function loadReference() {
 
     } catch (error) {
 
+        if (currentVersion !== loadVersion) {
+            return;
+        }
+
         loading.textContent =
             "Błąd wczytywania tekstu wzorcowego.";
 
-        score.textContent = "Błąd";
+        score.textContent = "Błąd wczytywania";
 
         console.error(error);
     }
 }
 
 // =====================================================
-// OBSŁUGA WPISYWANIA
+// WPISYWANIE
 // =====================================================
 
 answer.addEventListener("input", () => {
@@ -570,7 +826,7 @@ lesson.addEventListener("change", () => {
     loadReference();
 });
 
-// Czyszczenie
+// Czyszczenie odpowiedzi
 clearButton.addEventListener("click", () => {
 
     answer.textContent = "";
@@ -586,7 +842,7 @@ clearButton.addEventListener("click", () => {
 });
 
 // =====================================================
-// START
+// URUCHOMIENIE STRONY
 // =====================================================
 
 loadReference();
@@ -595,5 +851,6 @@ loadReference();
 
 </body>
 </html>
+
 
 
