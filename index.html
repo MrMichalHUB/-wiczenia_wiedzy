@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -14,7 +15,6 @@
     --text: #e8eee7;
     --green: #8dbb70;
     --red: #ff7777;
-    --orange: #ffbe67;
     --border: #526451;
 }
 
@@ -54,7 +54,6 @@ label {
 }
 
 select,
-textarea,
 button {
     width: 100%;
     padding: 12px;
@@ -64,12 +63,6 @@ button {
     background: #101810;
     color: var(--text);
     font-size: 16px;
-}
-
-textarea {
-    min-height: 260px;
-    resize: vertical;
-    line-height: 1.7;
 }
 
 button {
@@ -83,8 +76,45 @@ button:hover {
     background: #6a9651;
 }
 
-button.secondary {
-    background: #394839;
+#answer {
+    width: 100%;
+    min-height: 280px;
+    padding: 15px;
+    background: #101810;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 18px;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    outline: none;
+}
+
+#answer:focus {
+    border-color: var(--green);
+}
+
+#answer:empty::before {
+    content: attr(data-placeholder);
+    color: #758174;
+    pointer-events: none;
+}
+
+.correct {
+    color: #8df08d;
+    background: #244b2c;
+    border-radius: 3px;
+}
+
+.wrong {
+    color: #ff8b8b;
+    background: #592727;
+    border-radius: 3px;
+}
+
+.pending {
+    color: #e8eee7;
 }
 
 #score {
@@ -97,35 +127,18 @@ button.secondary {
 
 #stats {
     text-align: center;
-    margin-bottom: 20px;
     color: #c5d0c2;
+    line-height: 1.7;
 }
 
-#result {
-    line-height: 2.4;
-    overflow-wrap: anywhere;
+.legend {
+    font-size: 14px;
+    line-height: 2;
 }
 
-.word {
-    padding: 3px 5px;
-    margin: 2px;
-    border-radius: 4px;
-}
-
-.correct {
-    background: #244b2c;
-    color: #a8f0a8;
-}
-
-.missing {
-    background: #592727;
-    color: #ffaaaa;
-    text-decoration: line-through;
-}
-
-.extra {
-    background: #60451f;
-    color: #ffd28a;
+.small {
+    font-size: 13px;
+    color: #aab5a7;
 }
 
 details {
@@ -145,16 +158,6 @@ summary {
     padding: 12px;
     background: #101810;
     border-radius: 8px;
-}
-
-.legend {
-    font-size: 14px;
-    line-height: 2;
-}
-
-.small {
-    font-size: 13px;
-    color: #aab5a7;
 }
 
 @media (max-width: 600px) {
@@ -184,7 +187,7 @@ summary {
     <label for="lesson">Wybierz materiał:</label>
 
     <select id="lesson">
-        <option value="prawo_broni.txt">
+        <option value="prawo-broni.txt">
             Prawo użycia broni – art. 45
         </option>
 
@@ -200,10 +203,6 @@ summary {
     <details>
         <summary>Odsłoń tekst wzorcowy</summary>
 
-        <p class="small">
-            Używaj tej opcji, gdy chcesz sprawdzić oryginalną treść.
-        </p>
-
         <pre id="referenceDisplay"></pre>
     </details>
 
@@ -211,52 +210,42 @@ summary {
 
 <div class="panel">
 
-    <label for="answer">
+    <label>
         Wpisz tekst z pamięci:
     </label>
 
-    <textarea
+    <div
         id="answer"
-        placeholder="Zacznij pisać tutaj..."
+        contenteditable="true"
+        role="textbox"
+        aria-multiline="true"
+        data-placeholder="Zacznij pisać tutaj..."
         spellcheck="false"
         autocapitalize="off"
-    ></textarea>
-
-    <button id="checkButton">
-        SPRAWDŹ ZGODNOŚĆ
-    </button>
-
-    <button id="clearButton" class="secondary">
-        Wyczyść odpowiedź
-    </button>
+    ></div>
 
     <p class="small">
-        Twoja odpowiedź zapisuje się automatycznie
-        w pamięci przeglądarki.
+        Kolory pojawiają się automatycznie po zakończeniu słowa.
+        Możesz pisać, poprawiać i usuwać tekst.
     </p>
+
+    <button id="clearButton">
+        Wyczyść odpowiedź
+    </button>
 
 </div>
 
 <div class="panel">
 
-    <div id="score">
-        Wynik: —
-    </div>
+    <div id="score">Zgodność: —</div>
 
     <div id="stats"></div>
 
     <p class="legend">
-        <span class="word correct">Zielony</span>
-        – poprawne słowa
-
-        <span class="word missing">Czerwony</span>
-        – pominięte słowa
-
-        <span class="word extra">Pomarańczowy</span>
-        – błędne lub dodatkowe słowa
+        <span class="correct">Zielony</span> – poprawne słowo
+        <span class="wrong">Czerwony</span> – błędne słowo
+        <span class="pending">Biały</span> – aktualnie wpisywane
     </p>
-
-    <div id="result"></div>
 
 </div>
 
@@ -265,23 +254,20 @@ summary {
 <script>
 "use strict";
 
-// Elementy strony
 const lesson = document.getElementById("lesson");
 const answer = document.getElementById("answer");
 const referenceDisplay = document.getElementById("referenceDisplay");
-const result = document.getElementById("result");
+const loading = document.getElementById("loading");
 const score = document.getElementById("score");
 const stats = document.getElementById("stats");
-const loading = document.getElementById("loading");
-const checkButton = document.getElementById("checkButton");
 const clearButton = document.getElementById("clearButton");
 
-// Aktualnie załadowany tekst wzorcowy
 let referenceText = "";
+let referenceWords = [];
+let isComposing = false;
 
 // =====================================================
-// NORMALIZACJA
-// Ignoruje wielkość liter i interpunkcję.
+// NORMALIZACJA SŁÓW
 // =====================================================
 
 function normalize(word) {
@@ -292,34 +278,219 @@ function normalize(word) {
 }
 
 // =====================================================
-// PODZIAŁ TEKSTU NA SŁOWA
+// PODZIAŁ NA SŁOWA
 // =====================================================
 
 function tokenize(text) {
-    return text
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean);
+    return text.trim().split(/\s+/).filter(Boolean);
 }
 
 // =====================================================
-// ZAPIS ODPOWIEDZI W PRZEGLĄDARCE
+// POBIERANIE TEKSTU Z POLA
+// =====================================================
+
+function getPlainText() {
+    return answer.innerText
+        .replace(/\u00A0/g, " ")
+        .replace(/\r/g, "");
+}
+
+// =====================================================
+// ZAPIS ODPOWIEDZI
 // =====================================================
 
 function saveAnswer() {
-    const key = "military_answer_" + lesson.value;
-
-    localStorage.setItem(key, answer.value);
+    localStorage.setItem(
+        "military_answer_" + lesson.value,
+        getPlainText()
+    );
 }
 
 function loadAnswer() {
-    const key = "military_answer_" + lesson.value;
+    const saved = localStorage.getItem(
+        "military_answer_" + lesson.value
+    ) || "";
 
-    answer.value = localStorage.getItem(key) || "";
+    answer.textContent = saved;
 }
 
 // =====================================================
-// WCZYTYWANIE TEKSTU WZORCOWEGO Z PLIKU TXT
+// ZAPAMIĘTANIE POZYCJI KURSORA
+// =====================================================
+
+function getCaretOffset(element) {
+    const selection = window.getSelection();
+
+    if (!selection.rangeCount) {
+        return 0;
+    }
+
+    const range = selection.getRangeAt(0);
+
+    if (!element.contains(range.startContainer)) {
+        return getPlainText().length;
+    }
+
+    const beforeCaret = range.cloneRange();
+
+    beforeCaret.selectNodeContents(element);
+    beforeCaret.setEnd(
+        range.startContainer,
+        range.startOffset
+    );
+
+    return beforeCaret.toString().length;
+}
+
+function setCaretOffset(element, offset) {
+    const selection = window.getSelection();
+    const range = document.createRange();
+
+    let currentOffset = 0;
+    let targetNode = null;
+    let targetOffset = 0;
+
+    const walker = document.createTreeWalker(
+        element,
+        NodeFilter.SHOW_TEXT
+    );
+
+    let node;
+
+    while ((node = walker.nextNode())) {
+
+        const length = node.textContent.length;
+
+        if (currentOffset + length >= offset) {
+
+            targetNode = node;
+            targetOffset = offset - currentOffset;
+
+            break;
+        }
+
+        currentOffset += length;
+    }
+
+    if (!targetNode) {
+
+        range.selectNodeContents(element);
+        range.collapse(false);
+
+    } else {
+
+        range.setStart(targetNode, targetOffset);
+        range.collapse(true);
+
+    }
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+// =====================================================
+// SPRAWDZANIE I KOLOROWANIE NA ŻYWO
+// =====================================================
+
+function checkLive() {
+
+    const text = getPlainText();
+
+    const caretOffset = getCaretOffset(answer);
+
+    const parts = text.match(/\S+|\s+/g) || [];
+
+    answer.innerHTML = "";
+
+    let wordIndex = 0;
+    let charOffset = 0;
+
+    let correctCount = 0;
+    let wrongCount = 0;
+
+    parts.forEach(part => {
+
+        // Białe znaki zostają zachowane
+        if (/^\s+$/.test(part)) {
+
+            answer.appendChild(
+                document.createTextNode(part)
+            );
+
+            charOffset += part.length;
+
+            return;
+        }
+
+        const span = document.createElement("span");
+
+        span.textContent = part;
+
+        const isLastWord =
+            charOffset + part.length === text.length;
+
+        // Ostatnie słowo pozostaje neutralne,
+        // dopóki użytkownik go nie zakończy.
+        const isFinished =
+            !isLastWord ||
+            /[.,;:!?)]$/.test(part);
+
+        if (!isFinished) {
+
+            span.className = "pending";
+
+        } else {
+
+            const expected =
+                referenceWords[wordIndex];
+
+            if (
+                expected !== undefined &&
+                normalize(part) === normalize(expected)
+            ) {
+
+                span.className = "correct";
+                correctCount++;
+
+            } else {
+
+                span.className = "wrong";
+                wrongCount++;
+
+            }
+
+        }
+
+        answer.appendChild(span);
+
+        wordIndex++;
+
+        charOffset += part.length;
+
+    });
+
+    // Przywrócenie pozycji kursora
+    setCaretOffset(answer, caretOffset);
+
+    const total = referenceWords.length;
+
+    const percentage = total
+        ? Math.round(correctCount / total * 100)
+        : 0;
+
+    score.textContent =
+        "Zgodność: " + percentage + "%";
+
+    stats.textContent =
+        "Poprawne: " + correctCount +
+        " | Błędne: " + wrongCount +
+        " | Słów wzorcowych: " + total;
+
+    saveAnswer();
+}
+
+// =====================================================
+// WCZYTYWANIE PLIKU TXT
 // =====================================================
 
 async function loadReference() {
@@ -327,323 +498,102 @@ async function loadReference() {
     loading.textContent = "Wczytywanie materiału...";
 
     referenceText = "";
+    referenceWords = [];
+
     referenceDisplay.textContent = "";
-    result.innerHTML = "";
+    answer.textContent = "";
 
-    score.textContent = "Wynik: —";
+    score.textContent = "Zgodność: —";
     stats.textContent = "";
-
-    answer.value = "";
-
-    checkButton.disabled = true;
 
     try {
 
         const response = await fetch(lesson.value);
 
         if (!response.ok) {
-            throw new Error(
-                "Nie udało się pobrać pliku: " + lesson.value
-            );
+            throw new Error("Nie udało się wczytać pliku.");
         }
 
         referenceText = await response.text();
 
         referenceText = referenceText.trim();
 
-        if (!referenceText) {
-            throw new Error("Plik tekstowy jest pusty.");
+        referenceWords = tokenize(referenceText);
+
+        if (!referenceWords.length) {
+            throw new Error("Plik jest pusty.");
         }
 
         referenceDisplay.textContent = referenceText;
 
         loadAnswer();
 
-        loading.textContent = "Materiał został wczytany.";
+        loading.textContent = "Materiał załadowany.";
 
-        checkButton.disabled = false;
+        checkLive();
 
     } catch (error) {
 
         loading.textContent =
-            "Nie udało się wczytać materiału.";
+            "Błąd wczytywania tekstu wzorcowego.";
 
-        referenceDisplay.textContent = "";
-
-        score.textContent = "Błąd wczytywania";
-
-        result.textContent =
-            "Sprawdź, czy plik TXT znajduje się w repozytorium " +
-            "i czy jego nazwa jest poprawna.";
+        score.textContent = "Błąd";
 
         console.error(error);
     }
 }
 
 // =====================================================
-// PORÓWNYWANIE SŁÓW
-//
-// Algorytm Levenshteina:
-// - poprawne słowo
-// - pominięte słowo
-// - błędne słowo
-// - dodatkowe słowo
-//
-// Przy zamianie słowa na inne oznacza oba:
-// pominięte słowo wzorcowe i błędne słowo użytkownika.
+// OBSŁUGA WPISYWANIA
 // =====================================================
-
-function compareWords(referenceWords, userWords) {
-
-    const n = referenceWords.length;
-    const m = userWords.length;
-
-    // Macierz kosztów
-    const dp = Array.from(
-        { length: n + 1 },
-        () => Array(m + 1).fill(0)
-    );
-
-    // Koszt pominięcia słów wzorcowych
-    for (let i = 0; i <= n; i++) {
-        dp[i][0] = i;
-    }
-
-    // Koszt dodatkowych słów użytkownika
-    for (let j = 0; j <= m; j++) {
-        dp[0][j] = j;
-    }
-
-    // Wypełnianie macierzy
-    for (let i = 1; i <= n; i++) {
-
-        for (let j = 1; j <= m; j++) {
-
-            const refWord = normalize(referenceWords[i - 1]);
-            const userWord = normalize(userWords[j - 1]);
-
-            const substitutionCost =
-                refWord === userWord ? 0 : 1;
-
-            dp[i][j] = Math.min(
-
-                // Zamiana lub dopasowanie
-                dp[i - 1][j - 1] + substitutionCost,
-
-                // Pominięcie słowa wzorcowego
-                dp[i - 1][j] + 1,
-
-                // Dodatkowe słowo
-                dp[i][j - 1] + 1
-
-            );
-        }
-    }
-
-    // Odtwarzanie porównania
-    const output = [];
-
-    let i = n;
-    let j = m;
-
-    while (i > 0 || j > 0) {
-
-        // Dokładne dopasowanie
-        if (
-            i > 0 &&
-            j > 0 &&
-            normalize(referenceWords[i - 1]) ===
-            normalize(userWords[j - 1]) &&
-            dp[i][j] === dp[i - 1][j - 1]
-        ) {
-
-            output.push({
-                word: referenceWords[i - 1],
-                type: "correct"
-            });
-
-            i--;
-            j--;
-
-        }
-
-        // Zamiana słowa
-        else if (
-            i > 0 &&
-            j > 0 &&
-            dp[i][j] === dp[i - 1][j - 1] + 1
-        ) {
-
-            output.push({
-                word: referenceWords[i - 1],
-                type: "missing"
-            });
-
-            output.push({
-                word: userWords[j - 1],
-                type: "extra"
-            });
-
-            i--;
-            j--;
-
-        }
-
-        // Pominięcie słowa
-        else if (
-            i > 0 &&
-            dp[i][j] === dp[i - 1][j] + 1
-        ) {
-
-            output.push({
-                word: referenceWords[i - 1],
-                type: "missing"
-            });
-
-            i--;
-
-        }
-
-        // Dodatkowe słowo
-        else if (j > 0) {
-
-            output.push({
-                word: userWords[j - 1],
-                type: "extra"
-            });
-
-            j--;
-
-        }
-    }
-
-    // Odwracamy kolejność, ponieważ odtwarzaliśmy od końca
-    output.reverse();
-
-    const correctWords = output.filter(
-        item => item.type === "correct"
-    ).length;
-
-    const missingWords = output.filter(
-        item => item.type === "missing"
-    ).length;
-
-    const extraWords = output.filter(
-        item => item.type === "extra"
-    ).length;
-
-    return {
-        output,
-        correctWords,
-        missingWords,
-        extraWords
-    };
-}
-
-// =====================================================
-// SPRAWDZANIE TEKSTU
-// =====================================================
-
-function checkText() {
-
-    const referenceWords = tokenize(referenceText);
-    const userWords = tokenize(answer.value);
-
-    if (!referenceWords.length) {
-
-        alert("Nie załadowano tekstu wzorcowego.");
-
-        return;
-    }
-
-    if (!userWords.length) {
-
-        alert("Wpisz tekst z pamięci.");
-
-        return;
-    }
-
-    const comparison = compareWords(
-        referenceWords,
-        userWords
-    );
-
-    const percentage = Math.round(
-        comparison.correctWords /
-        referenceWords.length * 100
-    );
-
-    score.textContent =
-        "Zgodność: " + percentage + "%";
-
-    stats.textContent =
-        "Poprawne: " + comparison.correctWords +
-        " | Pominięte: " + comparison.missingWords +
-        " | Błędne/dodatkowe: " + comparison.extraWords;
-
-    result.innerHTML = "";
-
-    // Wyświetlanie kolorów
-    comparison.output.forEach(item => {
-
-        const span = document.createElement("span");
-
-        span.className = "word " + item.type;
-
-        // Bezpieczne wyświetlanie tekstu
-        span.textContent = item.word + " ";
-
-        result.appendChild(span);
-
-    });
-
-    saveAnswer();
-}
-
-// =====================================================
-// WYCZYSZCZENIE ODPOWIEDZI
-// =====================================================
-
-function clearAnswer() {
-
-    answer.value = "";
-
-    result.innerHTML = "";
-
-    score.textContent = "Wynik: —";
-
-    stats.textContent = "";
-
-    saveAnswer();
-}
-
-// =====================================================
-// OBSŁUGA ZDARZEŃ
-// =====================================================
-
-lesson.addEventListener("change", () => {
-
-    saveAnswer();
-
-    loadReference();
-
-});
 
 answer.addEventListener("input", () => {
 
-    saveAnswer();
+    if (!isComposing) {
+        checkLive();
+    }
 
 });
 
-checkButton.addEventListener("click", checkText);
+// Obsługa polskich znaków i klawiatur mobilnych
+answer.addEventListener("compositionstart", () => {
+    isComposing = true;
+});
 
-clearButton.addEventListener("click", clearAnswer);
+answer.addEventListener("compositionend", () => {
+    isComposing = false;
+    checkLive();
+});
 
-// Wczytanie materiału przy uruchomieniu strony
+// Zmiana materiału
+lesson.addEventListener("change", () => {
+    loadReference();
+});
+
+// Czyszczenie
+clearButton.addEventListener("click", () => {
+
+    answer.textContent = "";
+
+    localStorage.removeItem(
+        "military_answer_" + lesson.value
+    );
+
+    checkLive();
+
+    answer.focus();
+
+});
+
+// =====================================================
+// START
+// =====================================================
+
 loadReference();
 
 </script>
 
 </body>
 </html>
+
 
